@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>技術洞察分析 - {{ task_name }}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/standalone/umd/vis-network.min.js"></script>
+    <style>
+        :root { --bg: #010409; --primary: #238636; --border: #30363d; --accent: #1f6feb; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: #c9d1d9; margin: 0; padding: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        
+        .navbar { height: 75px; background: #0d1117; border-bottom: 2px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 2rem; z-index: 1000; box-sizing: border-box; flex-shrink: 0; }
+        .back-btn { background: #21262d; border: 1px solid var(--border); color: #fff; padding: 0.6rem 1.2rem; border-radius: 8px; text-decoration: none; font-size: 0.85rem; }
+        
+        .workspace { flex: 1; position: relative; display: flex; overflow: hidden; }
+        .sidebar { width: 360px; background: rgba(13, 17, 23, 0.95); border-right: 2px solid var(--border); padding: 1.5rem; overflow-y: auto; z-index: 100; box-sizing: border-box; }
+        
+        #network-viz { flex: 1; height: 100%; background: radial-gradient(circle at center, #0d1117 0%, #010409 100%); z-index: 1; }
+
+        /* 語意名片系統 */
+        #infoCard { position: fixed; bottom: 30px; right: 30px; width: 340px; background: rgba(22, 27, 34, 0.95); backdrop-filter: blur(25px); border: 1.5px solid var(--primary); border-radius: 20px; padding: 1.5rem; transform: translateY(150%); transition: transform 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28); z-index: 1000; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+        #infoCard.show { transform: translateY(0); }
+        .card-name { font-size: 1.5rem; font-weight: 900; color: #fff; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 10px; }
+        .card-cat { font-size: 0.7rem; padding: 3px 8px; border-radius: 6px; border: 1px solid currentColor; text-transform: uppercase; letter-spacing: 0.1em; }
+        .card-desc { font-size: 0.92rem; line-height: 1.6; color: #8b949e; margin: 1rem 0; border-top: 1px solid #30363d; padding-top: 1rem; }
+        
+        /* 深度搜尋按鈕 */
+        .dive-btn { width: 100%; background: var(--accent); color: white; border: none; padding: 0.8rem; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.3s; }
+        .dive-btn:hover { background: #388bfd; transform: scale(1.02); }
+
+        /* 深度情報 Modal */
+        #diveModal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(15px); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 2rem; }
+        .modal-content { max-width: 850px; width: 100%; background: #0d1117; border: 1.5px solid var(--accent); border-radius: 28px; padding: 3rem; position: relative; animation: modalUp 0.4s cubic-bezier(0.23, 1, 0.32, 1); max-height: 85vh; overflow-y: auto; box-shadow: 0 30px 100px rgba(0,0,0,0.8); }
+        @keyframes modalUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .close-btn { position: absolute; top: 25px; right: 25px; background: rgba(255,255,255,0.05); border: none; color: #fff; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s; }
+        .close-btn:hover { background: #ef4444; }
+        
+        .report-section { margin-bottom: 2.5rem; }
+        .report-title { color: var(--accent); font-weight: 900; font-size: 1.2rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid rgba(31, 111, 235, 0.2); }
+        .report-body { font-size: 1.05rem; line-height: 1.95; color: #cbd5e1; white-space: pre-wrap; }
+        .report-body b { color: #fff; background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-weight: 800; }
+
+        /* 排行榜 */
+        .stat-item { display: flex; justify-content: space-between; padding: 0.8rem 0; border-bottom: 1px solid #21262d; cursor: pointer; transition: 0.2s; }
+        .stat-item:hover { color: var(--primary); transform: translateX(5px); }
+        .val-badge { color: var(--primary); font-family: monospace; font-weight: 800; background: rgba(35, 134, 54, 0.1); padding: 2px 6px; border-radius: 4px; }
+        
+        .loading-spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid var(--accent); border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <div style="display:flex; align-items:center; gap: 2rem;">
+            <a href="/" class="back-btn">← 控制台</a>
+            <div>
+                <h1 style="margin:0; font-size: 1.2rem; background: linear-gradient(135deg, #fff 0%, #388bfd 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 0.1em;">🪐 SKILL GALAXY</h1>
+                <p style="margin:0; font-size: 0.7rem; color: #8b949e">針對 <b>{{ task_name }}</b> 之實時技術宇宙拓樸分析</p>
+            </div>
+        </div>
+        <div id="status" style="font-size: 0.8rem; font-weight: 700; color: #238636;">● 解析系統就緒</div>
+    </div>
+
+    <div class="workspace">
+        <aside class="sidebar">
+            <h2 style="font-size: 0.75rem; color: #8b949e; text-transform: uppercase; margin-bottom: 2rem; border-left: 3px solid var(--primary); padding-left: 1rem;">市場技術熱度排行</h2>
+            <ul id="list" style="list-style:none; padding:0; margin:0;"></ul>
+        </aside>
+        <div id="network-viz"></div>
+    </div>
+
+    <!-- AI 語義名片 -->
+    <div id="infoCard">
+        <div class="card-name">
+            <span id="cName"></span>
+            <span id="cCat" class="card-cat"></span>
+        </div>
+        <div style="font-size:0.8rem; color:#8b949e">市場頻次：<span id="cCount" style="color:var(--primary);font-weight:800;"></span> 筆職缺</div>
+        <div id="cDesc" class="card-desc">📡 正在同步市場情資...</div>
+        <button class="dive-btn" id="diveBtn">🌐 進行深度 RAG 全球檢索</button>
+    </div>
+
+    <div id="diveModal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeModal()">×</button>
+            <h2 style="margin:0 0 1.5rem 0;" id="mTitle">深度情報報告</h2>
+            <div id="mLoading" style="display:none; text-align:center;">
+                <div class="loading-spinner" style="width:40px; height:40px; margin:0 auto;"></div>
+                <p style="margin-top:1rem; font-size:0.8rem; color:var(--accent)">正在調用全球實時數據與 AI 市場建模...</p>
+            </div>
+            <div id="mResult"></div>
+        </div>
+    </div>
+
+    <script>
+        const taskName = "{{ task_name }}";
+        const catColors = { "語言": "#3b82f6", "框架": "#238636", "庫": "#1f6feb", "核心": "#d29922", "開發": "#8957e5", "一般": "#8b949e" };
+        let network = null;
+        let skillMeta = {};
+        let skillCache = {}; // 用於快取 AI 簡介
+        let currentSkill = null;
+
+        async function init() {
+            try {
+                // 第一階段：閃電讀取基礎數據
+                const res = await fetch(`/api/tasks/${taskName}/stats`);
+                const data = await res.json();
+                skillMeta = data.skills;
+
+                const sorted = Object.entries(data.skills).sort((a,b) => b[1].count - a[1].count);
+                const topSkillName = sorted.length > 0 ? sorted[0][0] : null; // 找到市場霸主
+
+                const list = document.getElementById('list');
+                sorted.forEach(([name, info]) => {
+                    const li = document.createElement('li'); li.className = 'stat-item';
+                    li.onclick = () => { network.selectNodes([name]); showCard(name); };
+                    const tagColor = catColors[info.cat] || '#8b949e';
+                    li.innerHTML = `
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-size:0.65rem; padding:2px 6px; border-radius:4px; border:1px solid ${tagColor}; color:${tagColor}; min-width:35px; text-align:center;">${info.cat}</span>
+                            <span style="font-weight:700;">${name}</span>
+                        </div>
+                        <span class="val-badge">${info.count}</span>`;
+                    list.appendChild(li);
+                });
+
+                const nodes = sorted.map(([name, info]) => {
+                    const isAnchor = (name === topSkillName);
+                    return {
+                        id: name, label: name, value: info.count,
+                        x: isAnchor ? 0 : undefined, // 鎖定正中心
+                        y: isAnchor ? 0 : undefined,
+                        fixed: isAnchor, // 霸主節點不移動
+                        color: { 
+                            background: (catColors[info.cat] || '#8b949e') + '66', 
+                            border: isAnchor ? '#fff' : (catColors[info.cat] || '#8b949e') 
+                        },
+                        borderWidth: isAnchor ? 4 : 2,
+                        font: { 
+                            color: '#fff', size: isAnchor ? 42 : 32, 
+                            face: 'Inter, system-ui, sans-serif',
+                            strokeWidth: 8, strokeColor: '#000',
+                            bold: true
+                        },
+                        shape: 'dot'
+                    };
+                });
+
+                const edges = data.edges.map(e => ({
+                    from: e.from, to: e.to, 
+                    length: Math.max(120, 600 - (e.width * 25)),
+                    width: Math.sqrt(e.width) * 4 + 1,
+                    color: { color: 'rgba(255,255,255,0.08)', highlight: '#238636' }
+                }));
+
+                const options = {
+                    layout: { randomSeed: 42 }, // 同樣的數據，永遠同樣的分布
+                    physics: {
+                        solver: 'forceAtlas2Based',
+                        forceAtlas2Based: { gravitationalConstant: -250, centralGravity: 0.015, springLength: 250, springConstant: 0.12, avoidOverlap: 1.2 },
+                        stabilization: { iterations: 200, fit: true }
+                    },
+                    nodes: { scaling: { min: 30, max: 90, label: { enabled: true, min: 24, max: 56 } } },
+                    interaction: { hideLabelsOnDrag: false, hideEdgesOnDrag: false }
+                };
+                
+                network = new vis.Network(document.getElementById('network-viz'), { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) }, options);
+
+                network.on("selectNode", (p) => { if(p.nodes.length > 0) showCard(p.nodes[0]); });
+                network.on("deselectNode", () => hideCard());
+                network.on("stabilizationIterationsDone", () => network.setOptions({ physics: false }));
+
+                document.getElementById('diveBtn').onclick = () => runDeepDive(currentSkill);
+
+            } catch(e) { console.error(e); }
+        }
+
+        async function showCard(id) {
+            currentSkill = id;
+            const meta = skillMeta[id];
+            document.getElementById('cName').innerText = id;
+            document.getElementById('cCat').innerText = meta.cat;
+            document.getElementById('cCat').style.color = catColors[meta.cat] || '#8b949e';
+            document.getElementById('cCount').innerText = meta.count;
+            document.getElementById('infoCard').classList.add('show');
+
+            // 第二階段：動態獲取 AI 語意說明
+            if (skillCache[id]) {
+                document.getElementById('cDesc').innerText = skillCache[id];
+            } else {
+                document.getElementById('cDesc').innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><div class="loading-spinner"></div> 📡 正在檢索技術定義...</div>';
+                try {
+                    const res = await fetch(`/api/skills/${encodeURIComponent(id)}/summary`);
+                    const data = await res.json();
+                    skillCache[id] = data.summary;
+                    if (currentSkill === id) document.getElementById('cDesc').innerText = data.summary;
+                } catch(e) { 
+                    document.getElementById('cDesc').innerText = "市場熱門實戰技術"; 
+                }
+            }
+        }
+
+        function hideCard() { document.getElementById('infoCard').classList.remove('show'); }
+
+        async function runDeepDive(skill) {
+            document.getElementById('diveModal').style.display = 'flex';
+            document.getElementById('mTitle').innerText = `${skill} 職場深度報告`;
+            document.getElementById('mLoading').style.display = 'block';
+            document.getElementById('mResult').innerHTML = '';
+
+            try {
+                const res = await fetch(`/api/skills/${encodeURIComponent(skill)}/deep_dive`);
+                const data = await res.json();
+                document.getElementById('mLoading').style.display = 'none';
+
+                if (data.report) {
+                    // 高級 Markdown 節段渲染
+                    const sections = data.report.split(/\n(?=#+ )/g).filter(s => s.trim().length > 0);
+                    let html = '';
+                    sections.forEach(s => {
+                        const lines = s.trim().split('\n');
+                        const rawTitle = lines[0].trim();
+                        const title = rawTitle.replace(/^#+\s*/, ''); // 移除 # ## ### 等符號
+                        
+                        // 處理內容：加粗與換行
+                        let body = lines.slice(1).join('<br>').trim();
+                        body = body.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); // 轉換加粗
+                        
+                        if (title && body) {
+                            html += `<div class="report-section"><div class="report-title">${title}</div><div class="report-body">${body}</div></div>`;
+                        }
+                    });
+                    document.getElementById('mResult').innerHTML = html || `<div class="report-body">${data.report}</div>`;
+                }
+            } catch(e) { 
+                document.getElementById('mLoading').style.display = 'none';
+                document.getElementById('mResult').innerHTML = '<p style="text-align:center; color:#ef4444;">📡 數據對接請求超時，請檢查網絡連線後重試。</p>';
+            }
+        }
+
+        function closeModal() { document.getElementById('diveModal').style.display = 'none'; }
+        window.onload = init;
+    </script>
+</body>
+</html>

@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>104 職缺市場情報平台 | AI 驅動數據分析</title>
+    <!-- 核心數據引擎 (可視化 & 縮放 & 標籤 & 物理模擬) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --primary: #22c55e;
+            --primary-dark: #16a34a;
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+            color: var(--text-main);
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        /* 介面框架 */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .glass-panel {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        /* 輸入區域樣式 */
+        .input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr 0.5fr auto;
+            gap: 1rem;
+            align-items: end;
+        }
+
+        .input-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            font-weight: 500;
+        }
+
+        input {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            color: white;
+            outline: none;
+            transition: border 0.3s;
+        }
+
+        input:focus { border-color: var(--primary); }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0.8rem 1.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn:hover { background: var(--primary-dark); transform: translateY(-2px); }
+        .btn:disabled { background: #334155; cursor: not-allowed; transform: none; }
+
+        /* 設定面板 */
+        #settings-panel {
+            position: absolute;
+            top: 5rem;
+            right: 2rem;
+            width: 350px;
+            z-index: 100;
+            display: none;
+            animation: fadeIn 0.3s forwards;
+        }
+
+        /* 任務概聽板 */
+        #dashboard {
+            margin-top: 2rem;
+            display: none;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .stat-card {
+            text-align: center;
+        }
+
+        .stat-value { font-size: 2rem; font-weight: 800; color: var(--primary); }
+        .stat-label { font-size: 0.8rem; color: var(--text-dim); }
+
+        /* 任務結果卡片 */
+        .job-card {
+            margin-top: 1rem;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            padding: 1.2rem;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .job-card:hover { background: rgba(255, 255, 255, 0.06); }
+        
+        .job-card .header { margin-bottom: 0.8rem; }
+        .job-title { font-size: 1.1rem; font-weight: 700; }
+        .company-name { font-size: 0.85rem; color: var(--text-dim); }
+        .salary { color: #f59e0b; font-weight: 600; font-size: 0.9rem; }
+        
+        .details-section { 
+            display: none; 
+            margin-top: 1rem; 
+            padding-top: 1rem; 
+            border-top: 1px solid var(--border); 
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        .details-section.active { display: block; animation: slideDown 0.3s ease-out; }
+        
+        .content-box { background: rgba(0,0,0,0.2); border-radius: 6px; padding: 1rem; margin-top: 0.5rem; white-space: pre-wrap; color: #cbd5e1; }
+        .section-title { font-weight: 700; margin-top: 1rem; color: var(--text-dim); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+
+        /* 客製化彈窗樣式 */
+        #modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(4px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-card {
+            width: 450px;
+            background: #1e293b;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            animation: modalPop 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+        }
+        .modal-btn {
+            padding: 0.6rem 2rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            margin: 0 0.5rem;
+        }
+        .modal-btn-primary { background: var(--primary); color: white; }
+        .modal-btn-secondary { background: #334155; color: white; }
+        .modal-btn-danger { background: #ef4444; color: white; }
+
+        /* 熱圖統計彈窗 */
+        #chart-modal {
+            width: 800px;
+            max-width: 90vw;
+            background: #0f172a;
+        }
+
+        @keyframes modalPop { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 狀態標籤 */
+        #status-badge {
+            display: none;
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            padding: 0.3rem 0.8rem;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+
+        .task-list {
+            margin-top: 2rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1 style="margin:0; font-size: 1.8rem; background: linear-gradient(135deg, #fff 0%, #388bfd 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">🪐 SKILL GALAXY</h1>
+                <p style="margin:0.2rem 0; color:var(--text-dim); font-size: 0.85rem;">Intelligence-Driven Technical Universe Analyzer</p>
+            </div>
+            <button class="btn" onclick="toggleSettings()" style="background: rgba(255,255,255,0.1);">⚙️ AI 設定</button>
+        </div>
+
+        <!-- AI 設定面板 -->
+        <div id="settings-panel" class="glass-panel" style="display:none; width: 400px; position: absolute; right: 2rem; top: 5rem; z-index: 2000;">
+            <h3 style="margin-top:0">🔧 核心 AI 與搜索配置</h3>
+            <div class="input-field" style="margin-bottom:1rem">
+                <label>OpenAI API Key</label>
+                <input type="password" id="apiKeyInput" placeholder="sk-...">
+                <span id="keyStatus" style="font-size: 0.7rem; color: var(--text-dim);">尚未設定</span>
+            </div>
+            <div class="input-field" style="margin-bottom:1rem">
+                <label>分析模型 (Model)</label>
+                <input type="text" id="modelNameInput" value="gpt-4o-mini">
+            </div>
+            <div class="input-field" style="margin-bottom:1rem">
+                <label>API Base URL</label>
+                <input type="text" id="apiBaseInput" value="https://api.openai.com/v1">
+            </div>
+            <div style="border-top: 1px solid var(--border); margin: 1.5rem 0; padding-top: 1rem;">
+                <h4 style="margin:0 0 0.5rem 0; font-size:0.8rem; color:var(--primary)">🌐 全球搜索 RAG 增強 (可選)</h4>
+                <div class="input-field" style="margin-bottom:1rem">
+                    <label>Google Search API Key</label>
+                    <input type="password" id="googleKeyInput" placeholder="用於高精度背景檢索">
+                </div>
+                <div class="input-field">
+                    <label>Google Search engine ID (CX)</label>
+                    <input type="text" id="googleCxInput" placeholder="可程式化搜尋引擎 ID">
+                </div>
+            </div>
+            <button class="btn" style="width:100%" onclick="saveSettings()">儲存並應用設定</button>
+        </div>
+
+        <!-- 搜尋與任務區 -->
+        <div class="glass-panel">
+            <div class="input-group">
+                <div class="input-field">
+                    <label>🔍 關鍵字職缺</label>
+                    <input type="text" id="keyword" placeholder="例如: 視覺演算法, Python...">
+                </div>
+                <div class="input-field">
+                    <label>📂 任務名稱 (資料庫存檔點)</label>
+                    <input type="text" id="taskName" placeholder="例如: vision_task_01">
+                </div>
+                <div class="input-field">
+                    <label>📄 深度 (頁數)</label>
+                    <input type="number" id="pages" value="1" min="1" max="100">
+                </div>
+                <button class="btn" id="scrapeBtn" onclick="startScrape()">啟動數據採集 🛰️</button>
+            </div>
+            <div id="status-badge"></div>
+            <div id="loading" style="display:none; margin-top:1rem; text-align: center;">數據處理中... 請稍候</div>
+            
+            <div class="task-list" id="taskList"></div>
+            <div id="taskStatus" style="font-size: 0.75rem; margin-top: 0.5rem;"></div>
+        </div>
+
+        <!-- 數據統計板 -->
+        <div id="dashboard" class="glass-panel">
+            <div class="stat-card">
+                <div class="stat-value" id="total-on-104">--</div>
+                <div class="stat-label">市場在線職缺</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="processed-count">0</div>
+                <div class="stat-label">已採集分析</div>
+            </div>
+            <div class="stat-card" style="display:flex; flex-direction:column; justify-content:center; gap:0.5rem;">
+                <button class="btn"id="analyticsBtn" onclick="showAnalytics()" style="width:100%; display:none; background:#8b5cf6">📊 市場技術熱圖</button>
+                <button class="btn" id="exportBtn" onclick="exportData()" style="width:100%; display:none; background:#3b82f6;">📁 導出數據 (CSV)</button>
+            </div>
+        </div>
+
+        <!-- 結果顯示區 -->
+        <p id="resultCount" style="margin-top: 2rem; color: var(--text-dim); font-size: 0.85rem; font-weight: 600;"></p>
+        <div id="results"></div>
+    </div>
+
+    <!-- 基礎彈窗 -->
+    <div id="modal-overlay">
+        <div class="modal-card" id="standard-modal">
+            <h3 id="modal-title">標題</h3>
+            <p id="modal-body" style="color:var(--text-dim); margin: 1.5rem 0;"></p>
+            <div id="modal-actions"></div>
+        </div>
+
+        <!-- 圖表專用彈窗 -->
+        <div class="modal-card" id="chart-modal" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 id="chart-title">🔥 核心技術頻率排位 (Heatmap)</h3>
+                <button class="modal-btn modal-btn-secondary" onclick="hideModal()">關閉</button>
+            </div>
+            <div style="height: 500px; margin-top: 1rem;">
+                <canvas id="skillChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentResults = [];
+        let myChart = null;
+
+        function showModal(title, body, isConfirm = false, isDanger = false) {
+            return new Promise((resolve) => {
+                const overlay = document.getElementById('modal-overlay');
+                document.getElementById('standard-modal').style.display = 'block';
+                document.getElementById('chart-modal').style.display = 'none';
+                overlay.style.display = 'flex';
+                document.getElementById('modal-title').innerText = title;
+                document.getElementById('modal-body').innerText = body;
+                const actions = document.getElementById('modal-actions');
+                actions.innerHTML = '';
+                if (isConfirm) {
+                    const n = document.createElement('button'); n.className='modal-btn modal-btn-secondary'; n.innerText='取消'; n.onclick=()=>{hideModal();resolve(false);}; actions.appendChild(n);
+                    const y = document.createElement('button'); y.className=isDanger?'modal-btn modal-btn-danger':'modal-btn modal-btn-primary'; y.innerText='確定'; y.onclick=()=>{hideModal();resolve(true);}; actions.appendChild(y);
+                } else {
+                    const ok = document.createElement('button'); ok.className='modal-btn modal-btn-primary'; ok.innerText='瞭解'; ok.onclick=()=>{hideModal();resolve(true);}; actions.appendChild(ok);
+                }
+            });
+        }
+
+        function hideModal() { document.getElementById('modal-overlay').style.display = 'none'; }
+
+        // 熱圖分析顯示 5.0：原位切換至數據中心 (SPA 導航感受) 
+        function showAnalytics() {
+            const task_name = document.getElementById('taskName').value;
+            if (!task_name) return showModal('提示', '請先選擇一個採集任務。');
+            window.location.href = `/analytics/${task_name}`;
+        }
+
+        window.onload = () => {
+            const now = new Date();
+            const dateStr = `${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+            document.getElementById('taskName').value = `project_${dateStr}`;
+            loadTaskList(); loadSettings();
+        };
+
+        function toggleSettings() { const p = document.getElementById('settings-panel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; }
+
+        async function loadSettings() {
+            try {
+                const r = await fetch('/api/settings'); const c = await r.json();
+                if (c.openai_api_key) {
+                    document.getElementById('apiKeyInput').value = c.openai_api_key;
+                    document.getElementById('modelNameInput').value = c.model_name || 'gpt-4o-mini';
+                    document.getElementById('apiBaseInput').value = c.api_base || 'https://api.openai.com/v1';
+                    document.getElementById('googleKeyInput').value = c.google_search_api_key || '';
+                    document.getElementById('googleCxInput').value = c.google_cse_id || '';
+                    const s = document.getElementById('keyStatus'); s.innerText = "✅ 已連結 OpenAI"; s.style.color = "#22c55e";
+                }
+            } catch(e) {}
+        }
+
+        async function saveSettings() {
+            const key = document.getElementById('apiKeyInput').value; document.getElementById('keyStatus').innerText = "處理中...";
+            const gKey = document.getElementById('googleKeyInput').value;
+            const gCx = document.getElementById('googleCxInput').value;
+            try {
+                await fetch('/api/settings', { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ 
+                        openai_api_key: key, 
+                        model_name: document.getElementById('modelNameInput').value, 
+                        api_base: document.getElementById('apiBaseInput').value,
+                        google_search_api_key: gKey,
+                        google_cse_id: gCx
+                    })
+                });
+                loadSettings(); setTimeout(()=> toggleSettings(), 1000);
+            } catch(e) { showModal('系統提示', '設定失敗'); }
+        }
+
+        async function loadTaskList() {
+            try {
+                const r = await fetch('/api/tasks'); const tasks = await r.json();
+                const list = document.getElementById('taskList'); list.innerHTML = '';
+                tasks.forEach(task => {
+                    const chip = document.createElement('div');
+                    chip.style.cssText = 'background: rgba(255,255,255,0.05); border: 1px solid var(--border); padding: 0.4rem 0.8rem; border-radius: 99px; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;';
+                    chip.innerHTML = `<span>📂 ${task.name}</span> <b style="color:var(--primary)">${task.count}</b> <button onclick="deleteTask(event, '${task.name}')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:0.8rem;">🗑️</button>`;
+                    chip.onclick = () => selectTask(task.name, task.count);
+                    list.appendChild(chip);
+                });
+            } catch(e) {}
+        }
+
+        async function deleteTask(e, n) {
+            e.stopPropagation(); const ok = await showModal('🚨 刪除確認', `刪除 [${n}]？`, true, true);
+            if (ok) { await fetch(`/api/tasks/${n}`, { method: 'DELETE' }); loadTaskList(); }
+        }
+
+        async function selectTask(name, count) {
+            document.getElementById('taskName').value = name;
+            document.getElementById('taskStatus').innerText = `正在回溯 [${name}] ...`;
+            try {
+                const r = await fetch(`/api/tasks/${name}/data`); const jobs = await r.json();
+                const resDiv = document.getElementById('results');
+                resDiv.innerHTML = ''; document.getElementById('dashboard').style.display = 'grid';
+                document.getElementById('total-on-104').innerText = '歷史存檔';
+                document.getElementById('processed-count').innerText = jobs.length;
+                currentResults = jobs; jobs.forEach((j, i) => renderJobCard(j, i));
+                document.getElementById('exportBtn').style.display = 'block';
+                document.getElementById('analyticsBtn').style.display = 'block';
+                document.getElementById('taskStatus').innerText = `(已有 ${count} 筆)`;
+            } catch(e) {}
+        }
+
+        async function startScrape() {
+            const keyword = document.getElementById('keyword').value; const task_name = document.getElementById('taskName').value;
+            if (!keyword) return showModal('⚠️ 錯誤', '請輸入關鍵字');
+            if (!task_name) return showModal('⚠️ 錯誤', '請指定任務名稱');
+            const scrapeBtn = document.getElementById('scrapeBtn'); const loading = document.getElementById('loading');
+            scrapeBtn.disabled = true; loading.style.display = 'block';
+            document.getElementById('dashboard').style.display = 'grid';
+            document.getElementById('results').innerHTML = ''; currentResults = [];
+
+            try {
+                const response = await fetch('/api/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keyword, pages: document.getElementById('pages').value, task_name }) });
+                const reader = response.body.getReader(); const decoder = new TextDecoder();
+                while (true) {
+                    const { done, value } = await reader.read(); if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        const data = JSON.parse(line);
+                        if (data.status) document.getElementById('status-badge').innerText = data.status;
+                        if (data.total_jobs) document.getElementById('total-on-104').innerText = data.total_jobs;
+                        if (data.job_name) {
+                            currentResults.push(data);
+                            document.getElementById('processed-count').innerText = currentResults.length;
+                            renderJobCard(data, currentResults.length - 1);
+                        }
+                    }
+                }
+                document.getElementById('exportBtn').style.display = 'block';
+                document.getElementById('analyticsBtn').style.display = 'block';
+                loadTaskList();
+            } catch(e) { showModal('錯誤', '採集中斷'); } finally { scrapeBtn.disabled = false; loading.style.display = 'none'; }
+        }
+
+        function renderJobCard(job, index) {
+            const div = document.createElement('div'); div.className = 'job-card';
+            const tags = job.Skills_Raw.map(s => `<span style="background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); color:var(--primary); padding:2px 8px; border-radius:4px; font-size:0.7rem; margin:2px;">${s}</span>`).join('');
+            div.innerHTML = `
+                <div class="header" onclick="this.parentElement.querySelector('.details-section').classList.toggle('active')">
+                    <div style="flex:1">
+                        <div class="company-name">${job.company}</div>
+                        <div class="job-title">${job.job_name}</div>
+                    </div>
+                    <div class="salary">${job.salary}</div>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; margin-bottom: 0.5rem;">${tags}</div>
+                <div class="details-section">
+                    <div class="section-title">描述與要求</div>
+                    <div class="content-box">${job.description}\n\n${job.requirements}</div>
+                    <a href="${job.link}" target="_blank" style="color:var(--primary); font-size:0.8rem; text-decoration:none; display:inline-block; margin-top:1rem;">🔗 104 原始連結</a>
+                </div>
+            `;
+            document.getElementById('results').appendChild(div);
+        }
+
+        async function exportData() {
+            const n = document.getElementById('taskName').value;
+            if (!n) return showModal('提示', '請指定任務');
+            window.location.href = `/api/export/${n}`;
+        }
+    </script>
+</body>
+</html>
