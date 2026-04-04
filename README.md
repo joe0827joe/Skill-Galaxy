@@ -25,39 +25,54 @@
 
 ---
 
-## 🛠️ 技術架構
+## 🛠️ 技術架構與環境要求
 
-- **Backend**: Python 3.x (Flask) + SQLite3
+- **Python Runtime**: **Python 3.9 ~ 3.12 (強烈推薦 3.11)**
+  - *注意：低於 3.9 的版本將無法安裝 Flask 3.x 與最新的 AI 連接庫。*
+- **Backend**: Python Flask + SQLite3
 - **Frontend**: Vanilla JS + Vis.js Network Engine + CSS Glassmorphism
-- **AI Core**: LangChain + OpenAI (GPT-4o mini)
+- **AI Core**: LangChain-OpenAI + OpenAI SDK (`< 2.0.0` 穩定版)
 - **Intelligence Bridge**: Google Custom Search JSON API / DuckDuckGo Scraping
 
 ---
 
 ## 🚀 快速啟動
 
-### 1. 安裝環境
+### 1. 建立並啟動環境 (推薦使用 Conda)
+```bash
+conda create -n skill_galaxy python=3.11 -y
+conda activate skill_galaxy
+```
+
+### 2. 安裝依賴
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 啟動引擎
+### 3. 啟動引擎
 ```bash
 python app.py
 ```
 
-### 3. 配置情報金鑰
-進入首頁，在「系統設定組件」填入您的：
+### 4. 配置情報金鑰
+進入首頁 `http://127.0.0.1:5000`，在「系統設定組件」填入您的：
 - **OpenAI API Key**: 用於語意分析與報告生成。
 - **Google Search Key / CX**: 用於啟動官方高速 RAG 檢索。
 
 ---
 
-## ⚖️ 免責聲明 (Disclaimer & Responsible Use)
+## ⚠️ 常見問題 (Troubleshooting)
 
-本專案係基於 **「技術研究」** 與 **「學術交流」** 目的開發，開源前請務必瞭解以下核心要點：
+- **LLM Invoke Error (Status 400)**: 
+  本專案目前鎖定使用 `openai < 2.0.0` 版本以確保與 LangChain 穩定對接。若出現 400 錯誤，請檢查 `pip list` 確保 `openai` 版本非 2.x 以上，並使用專案提供的 `requirements.txt` 重新安裝。
+- **ModuleNotFoundError (Flask/dotenv)**:
+  請確保您已啟動正確的 Conda 環境（如 `skill_galaxy`），且 Python 版本高於 3.9。
+
+---
+
+## ⚖️ 免責聲明 (Disclaimer & Responsible Use)
 
 1.  **非官方工具**：本系統與 104 官方無任何隸屬關係，其數據採集邏輯僅供個人學習與研究使用。
 2.  **遵守規範**：使用者應自覺遵守 104 網站之 `robots.txt` 與相關使用條款。**嚴禁將本工具用於大規模採集、商業性質銷售或任何可能違反法律之用途。**
-3.  **無擔保責任**：依據 **MIT License**，本軟體按「原樣」提供，作者不對任何因使用、修改、分發本軟體所產生的損失、糾紛或賠償承擔任何法律責任。
-4.  **數據資安**：請妥善保管本地存儲的 API Key 與資料庫，建議使用 `.gitignore` 排除所有數據存儲目錄。
+3.  **無擔保責任**：依據 **MIT License**，作者不對任何因使用、修改本軟體所產生的損失承擔法律責任。
+4.  **數據資安**：請妥善保管 API Key，建議使用 `.gitignore` 排除 `data_storage/` 目錄。
